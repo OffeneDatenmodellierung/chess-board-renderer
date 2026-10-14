@@ -94,6 +94,7 @@ for where to get them, their licences and attribution lines.
 | `--style-every N` | `25` | A new piece design every N photos |
 | `--seed N` | `0` | |
 | `--cpu` | | Don't look for a GPU |
+| `--chunk N` | `500` | Photos per Blender run. Each run is a fresh Blender, so a long render doesn't build up memory. If a run stops early, the renderer says how (exit code or signal) and starts another from where it got to. `0` renders in one run |
 | `--min-piece-px N` | `10` | Every piece on the board must show its head (not hidden behind another piece) and be at least N pixels across at the trainer's 392-pixel size; otherwise another angle is tried |
 
 `positions.py` options:

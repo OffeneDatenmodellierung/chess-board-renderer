@@ -28,6 +28,9 @@ import json
 import math
 import os
 import random
+import resource
+import signal
+import subprocess
 import sys
 import time
 
@@ -617,11 +620,58 @@ def enable_gpu(scene):
 ASPECTS = [(4, 3), (3, 4), (16, 9), (9, 16), (1, 1), (3, 2)]
 
 
-def done_so_far(labels_path):
+def progress(labels_path):
+    """(photos labelled so far, the next photo number). Photo numbers can
+    have gaps (a photo with no usable view is skipped), so the next number
+    is one past the highest, not the count."""
     if not os.path.exists(labels_path):
-        return 0
+        return 0, 0
+    count, last = 0, -1
     with open(labels_path) as f:
-        return sum(1 for line in f if line.strip())
+        for line in f:
+            if not line.strip():
+                continue
+            count += 1
+            try:
+                last = max(last, int(os.path.basename(json.loads(line)["image"]).split(".")[0]))
+            except (ValueError, KeyError, json.JSONDecodeError):
+                pass
+    return count, last + 1
+
+
+def memory_mb():
+    """This process's peak memory (macOS reports bytes, Linux kilobytes)."""
+    peak = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    return peak / 1e6 if sys.platform == "darwin" else peak / 1e3
+
+
+def supervise(a, argv):
+    """Render in runs of --chunk photos, each in a fresh Blender, so nothing
+    piles up over a long run; and when a run ends early (a crash, or the
+    system stopping it), say how, and start another from where it got to."""
+    labels_path = os.path.join(a.out, "labels.jsonl")
+    if bpy.app.binary_path and "--" in sys.argv:
+        # Run as `blender -b -P render.py -- …`: start Blender again.
+        base = [bpy.app.binary_path, "-b", "--factory-startup", "-P", os.path.abspath(__file__), "--"]
+    else:
+        # Blender as a Python module (`uv run --extra blender render.py …`).
+        base = [sys.executable, os.path.abspath(__file__)]
+    stuck = 0
+    while True:
+        done, _ = progress(labels_path)
+        if done >= a.count:
+            print(f"done: {done} photos in {a.out}")
+            return
+        target = min(done + a.chunk, a.count)
+        cmd = base + argv + ["--count", str(target), "--total", str(a.count), "--worker"]
+        code = subprocess.call(cmd)
+        after, _ = progress(labels_path)
+        if code != 0:
+            how = f"signal {signal.Signals(-code).name}" if code < 0 else f"exit code {code}"
+            print(f"Blender stopped early ({how}) after photo {after}; starting it again", file=sys.stderr)
+        stuck = 0 if after > done else stuck + 1
+        if stuck >= 3:
+            sys.exit(f"three runs in a row made no photos (the last ended with exit code {code}): stopping")
 
 
 def main(argv):
@@ -636,6 +686,15 @@ def main(argv):
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--cpu", action="store_true", help="don't look for a GPU")
     p.add_argument(
+        "--chunk",
+        type=int,
+        default=500,
+        help="photos per Blender run: a fresh Blender for each run keeps long runs healthy (0: one run)",
+    )
+    # Used by the supervisor for its runs.
+    p.add_argument("--worker", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--total", type=int, default=0, help=argparse.SUPPRESS)
+    p.add_argument(
         "--min-piece-px",
         type=float,
         default=10,
@@ -649,18 +708,25 @@ def main(argv):
         parse_placement(fen)
     os.makedirs(os.path.join(a.out, "photos"), exist_ok=True)
     labels_path = os.path.join(a.out, "labels.jsonl")
-    start = done_so_far(labels_path)
-    if start >= a.count:
-        print(f"{a.out} already has {start} photos")
+    done, start = progress(labels_path)
+    if done >= a.count:
+        print(f"{a.out} already has {done} photos")
         return
+    if a.chunk > 0 and not a.worker:
+        supervise(a, argv)
+        return
+    total = a.total or a.count
 
     # Start from an empty scene.
     bpy.ops.wm.read_factory_settings(use_empty=True)
     rng = random.Random(a.seed * 1_000_003 + start)
     sc = Scene(rng, a)
-    t0 = time.time()
+    first = True
+    skipped_in_a_row = 0
+    n = start - 1
     with open(labels_path, "a") as labels:
-        for n in range(start, a.count):
+        while done < a.count:
+            n += 1
             pos_index = n // max(a.views, 1)
             placement = positions[pos_index % len(positions)].split()[0]
             sc.build(placement)
@@ -669,21 +735,26 @@ def main(argv):
             width, height = (long, round(long * h / w)) if w >= h else (round(long * w / h), long)
             if not sc.place_camera(width, height):
                 print(f"photo {n}: no view found, skipped")
+                skipped_in_a_row += 1
+                if skipped_in_a_row >= 50:
+                    sys.exit("50 photos in a row had no usable view: check --min-piece-px and --size")
                 continue
+            skipped_in_a_row = 0
             name = f"photos/{n:06d}.jpg"
             sc.scene.render.filepath = os.path.join(a.out, name)
             bpy.ops.render.render(write_still=True)
             labels.write(json.dumps({"image": name, "placement": placement, "group": f"pos-{pos_index:06d}"}) + "\n")
             labels.flush()
-            done = n + 1 - start
-            if done == 1:
+            done += 1
+            if first:
                 # The first photo also compiles the GPU's shaders: leave it
                 # out of the estimate.
-                t1 = time.time()
-                print(f"photo {n + 1}/{a.count} (the first one is slow: setting up)")
+                first, t1, since = False, time.time(), done
+                print(f"photo {done}/{total} (the first one is slow: setting up)")
                 continue
-            rate = (time.time() - t1) / (done - 1)
-            print(f"photo {n + 1}/{a.count} ({rate:.1f}s each, about {rate * (a.count - n - 1) / 60:.0f} min left)")
+            rate = (time.time() - t1) / (done - since)
+            mem = f", {memory_mb():.0f} MB" if done % 100 == 0 else ""
+            print(f"photo {done}/{total} ({rate:.1f}s each, about {rate * (total - done) / 60:.0f} min left{mem})")
 
 
 if __name__ == "__main__":
