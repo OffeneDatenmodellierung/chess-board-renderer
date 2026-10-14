@@ -23,6 +23,7 @@ import io
 import json
 import re
 import sys
+import zipfile
 from pathlib import Path
 
 from PIL import Image, ImageOps
@@ -119,24 +120,64 @@ def kings_and_count(placement: str) -> str:
     return f"{''.join(squares)}-{n}"
 
 
+SPLITS = {"train": "train", "val": "val", "valid": "val", "validation": "val", "test": "test"}
+
+
+def split_from(parts) -> str | None:
+    """The split named by a folder or zip in a path, if any."""
+    for part in reversed(list(parts)):
+        stem = Path(part).stem.lower()
+        if stem in SPLITS:
+            return SPLITS[stem]
+    return None
+
+
 def chesscog(src: Path, w: Writer):
     """The chesscog renders (osf.io/xf3ka): N.png with N.json holding
     "fen" (the board, absolute), "white_turn" (the side the camera is on),
-    corners and boxes. Splits from train/ val/ test/ folders if present."""
-    jsons = sorted(src.rglob("*.json"))
-    if not jsons:
-        sys.exit(f"no .json labels under {src}")
-    for j in jsons:
-        try:
-            label = json.loads(j.read_text())
-        except json.JSONDecodeError:
-            continue
+    corners and boxes. Read as downloaded, from its zip files (OSF's
+    train.zip, val.zip, test.zip), or from folders they were unzipped into.
+    Splits from the zip or folder names."""
+    found = 0
+
+    def take(where: str, stem: str, label: dict, image, split):
+        nonlocal found
         fen = label.get("fen")
-        img = next((j.with_suffix(e) for e in (".png", ".jpg") if j.with_suffix(e).exists()), None)
-        if not fen or img is None:
-            continue
-        split = j.parent.name if j.parent.name in ("train", "val", "test") else None
-        w.add(f"cc-{j.parent.name}-{j.stem}", img, fen.split()[0], group=f"chesscog:{j.parent.name}-{j.stem}", split=split)
+        if not fen:
+            return
+        found += 1
+        key = f"{split or where}-{stem}"
+        w.add(f"cc-{key}", image, fen.split()[0], group=f"chesscog:{key}", split=split)
+
+    zips = [src] if src.suffix == ".zip" else sorted(src.rglob("*.zip"))
+    for z in zips:
+        before = found
+        with zipfile.ZipFile(z) as zf:
+            names = set(zf.namelist())
+            for name in sorted(n for n in names if n.endswith(".json")):
+                base = name[: -len(".json")]
+                img = next((base + e for e in (".png", ".jpg") if base + e in names), None)
+                if img is None:
+                    continue
+                try:
+                    label = json.loads(zf.read(name))
+                except json.JSONDecodeError:
+                    continue
+                parts = [z.name, *Path(name).parts[:-1]]
+                take(z.stem, Path(base).name, label, io.BytesIO(zf.read(img)), split_from(parts))
+        print(f"  {z.name}: {found - before} labelled renders")
+    if src.is_dir():
+        for j in sorted(src.rglob("*.json")):
+            img = next((j.with_suffix(e) for e in (".png", ".jpg") if j.with_suffix(e).exists()), None)
+            if img is None:
+                continue
+            try:
+                label = json.loads(j.read_text())
+            except json.JSONDecodeError:
+                continue
+            take(j.parent.name, j.stem, label, img, split_from(j.relative_to(src).parts[:-1]))
+    if not found:
+        sys.exit(f"no labelled renders (a .json with \"fen\" beside each image) in {src}, nor in zip files there")
 
 
 def felix(src: str, w: Writer):
@@ -146,8 +187,8 @@ def felix(src: str, w: Writer):
     is the group."""
     try:
         from datasets import load_dataset
-    except ImportError:
-        sys.exit("felix needs Hugging Face's datasets: uv run --extra hf import_datasets.py felix …")
+    except ImportError as e:
+        sys.exit(f"felix needs Hugging Face's datasets (uv run --extra hf import_datasets.py felix …): {e}")
     name = src if src not in ("-", "") else "felixfabricius/robot-chess-commentator-squares"
     ds = load_dataset(name, "boards")
     for split, rows in ds.items():

@@ -193,6 +193,36 @@ def piece_geometry(kind: str, style: dict):
     raise ValueError(kind)
 
 
+def bake_slit(me, style):
+    """Cut the bishop's mitre slit into its mesh (a tilted thin box from the
+    middle out to one side), with Blender's boolean, once per design."""
+    rs, zs = style["radius"], style["height"]
+    scene = bpy.context.scene
+    ob = bpy.data.objects.new("bishop-tmp", me)
+    cutter = bpy.data.objects.new("slit-tmp", mesh_from("slit", box(0, 0, -0.16 * zs, 0.28 * rs, 0.05 * rs, 0.32 * zs), False))
+    cutter.location = (0.13 * rs, 0, 0.95 * zs)
+    cutter.rotation_euler = (0.75, 0, 0)
+    scene.collection.objects.link(ob)
+    scene.collection.objects.link(cutter)
+    try:
+        mod = ob.modifiers.new("slit", "BOOLEAN")
+        mod.operation = "DIFFERENCE"
+        mod.object = cutter
+        try:
+            mod.solver = "EXACT"
+        except TypeError:
+            pass
+        bpy.context.view_layer.update()
+        cut = bpy.data.meshes.new_from_object(ob.evaluated_get(bpy.context.evaluated_depsgraph_get()))
+    finally:
+        bpy.data.objects.remove(ob, do_unlink=True)
+        bpy.data.objects.remove(cutter, do_unlink=True)
+    if len(cut.polygons) <= len(me.polygons) // 2:
+        return me  # the boolean failed: keep the plain bishop
+    cut.name = "piece-b"
+    return cut
+
+
 def mesh_from(name, geom, smooth=True):
     verts, faces = geom
     me = bpy.data.meshes.new(name)
@@ -335,6 +365,8 @@ class Scene:
         self.piece_meshes = {}
         for k in "pnbrqk":
             me = mesh_from(f"piece-{k}", piece_geometry(k, style), smooth=k != "n")
+            if k == "b":
+                me = bake_slit(me, style)
             # Kept between photos, and coloured per object (one slot).
             me.use_fake_user = True
             me.materials.append(None)
@@ -397,8 +429,10 @@ class Scene:
         bmat = material("black", jitter(rng, bcol, 0.03), rng, prough * rng.uniform(0.7, 1.3), pgrain)
         scale = rng.uniform(0.85, 1.05)
         wobble = rng.uniform(0.0, 0.12)
+        self.board_pieces = []
         for f, r, ch in parse_placement(placement):
-            self.add_piece(ch, f - 3.5 + rng.uniform(-wobble, wobble), r - 3.5 + rng.uniform(-wobble, wobble), scale, wmat, bmat)
+            ob = self.add_piece(ch, f - 3.5 + rng.uniform(-wobble, wobble), r - 3.5 + rng.uniform(-wobble, wobble), scale, wmat, bmat)
+            self.board_pieces.append(ob)
 
         # Captured pieces beside the board now and then (not on a square, so
         # not in the label).
@@ -443,6 +477,7 @@ class Scene:
         # Per-object material: the mesh is shared by every piece of a kind.
         ob.material_slots[0].link = "OBJECT"
         ob.material_slots[0].material = wmat if white else bmat
+        return ob
 
     def add_lights(self):
         rng = self.rng
@@ -475,7 +510,7 @@ class Scene:
         cam.data.sensor_fit = "AUTO"
         b = self.border
         corners = [Vector((x, y, 0)) for x in (-4 - b, 4 + b) for y in (-4 - b, 4 + b)]
-        for _ in range(40):
+        for _ in range(80):
             cam.data.lens = rng.uniform(22, 55)
             az = rng.uniform(0, 2 * math.pi)
             el = math.radians(rng.uniform(22, 82))
@@ -510,13 +545,49 @@ class Scene:
             if pts is None:
                 continue
             m = 0.02
-            if all(m <= p.x <= 1 - m and m <= p.y <= 1 - m for p in pts):
+            if all(m <= p.x <= 1 - m and m <= p.y <= 1 - m for p in pts) and self.pieces_visible(width, height):
                 cam.data.dof.use_dof = rng.random() < 0.15
                 if cam.data.dof.use_dof:
                     cam.data.dof.focus_distance = (cam.location - target).length
                     cam.data.dof.aperture_fstop = rng.uniform(4, 16)
                 return True
         return False
+
+
+    def pieces_visible(self, width, height) -> bool:
+        """Whether every piece on the board can be made out from the camera:
+        its head not hidden behind another piece, and big enough at the
+        size the trainer scales photos to (--min-piece-px across, with the
+        long side at 392)."""
+        cam = self.camera
+        s = self.scene
+        dg = bpy.context.evaluated_depsgraph_get()
+        origin = cam.matrix_world.translation
+        scale = 392 / max(width, height)
+        for ob in self.board_pieces:
+            h = ob.dimensions.z
+            base = ob.location.copy()
+            top = base + Vector((0, 0, 0.85 * h))
+            view = top - origin
+            side = Vector((-view.y, view.x, 0))
+            side = side.normalized() * 0.09 * ob.scale.x if side.length > 1e-6 else Vector((0, 0, 0))
+            seen = False
+            for p in (top, top + side, top - side):
+                d = p - origin
+                hit, _, _, _, hit_ob, _ = s.ray_cast(dg, origin, d.normalized(), distance=d.length + 0.05)
+                if hit and hit_ob is not None and hit_ob.name == ob.name:
+                    seen = True
+                    break
+            if not seen:
+                return False
+            # Its size in the trainer's input: the larger of its height and
+            # its width as the camera sees them.
+            a, b = world_to_camera_view(s, cam, base), world_to_camera_view(s, cam, top)
+            l, r = world_to_camera_view(s, cam, top - side * 3), world_to_camera_view(s, cam, top + side * 3)
+            px = max(math.hypot((a.x - b.x) * width, (a.y - b.y) * height), math.hypot((l.x - r.x) * width, (l.y - r.y) * height))
+            if px * scale < self.args.min_piece_px:
+                return False
+        return True
 
 
 def enable_gpu(scene):
@@ -564,6 +635,12 @@ def main(argv):
     p.add_argument("--style-every", type=int, default=25, help="a new piece design every this many photos")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--cpu", action="store_true", help="don't look for a GPU")
+    p.add_argument(
+        "--min-piece-px",
+        type=float,
+        default=10,
+        help="every piece on the board must be at least this big (at the trainer's 392 pixels) and not hidden",
+    )
     a = p.parse_args(argv)
 
     with open(a.positions) as f:

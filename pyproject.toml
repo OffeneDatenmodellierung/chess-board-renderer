@@ -16,8 +16,11 @@ dependencies = [
 # Blender as a Python module, instead of the Blender app.
 blender = ["bpy>=4.2"]
 # The Hugging Face importer (felix).
-hf = ["datasets>=3"]
+hf = ["datasets>=3", "numpy>=2"]
 
 [tool.uv]
 # Scripts, not an installable package.
 package = false
+# bpy pins NumPy 1.x, and Hugging Face's datasets (via pyarrow) needs 2.x:
+# never installed together, so each resolves on its own.
+conflicts = [[{ extra = "blender" }, { extra = "hf" }]]
