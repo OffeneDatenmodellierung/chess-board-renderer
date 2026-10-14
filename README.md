@@ -69,6 +69,13 @@ format = "jsonl"
 path = "synthetic"
 ```
 
+## Open datasets to mix in
+
+`import_datasets.py` turns openly licensed board datasets into the same
+format: samryan18's 500 photos (MIT), the chesscog renders (CC BY 4.0) and
+the robot-chess-commentator boards (CC BY 4.0). See [DATASETS.md](DATASETS.md)
+for where to get them, their licences and attribution lines.
+
 ## Options
 
 | Option | Default | |
