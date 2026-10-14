@@ -152,7 +152,15 @@ def chesscog(src: Path, w: Writer):
     zips = [src] if src.suffix == ".zip" else sorted(src.rglob("*.zip"))
     for z in zips:
         before = found
-        with zipfile.ZipFile(z) as zf:
+        try:
+            zf = zipfile.ZipFile(z)
+        except zipfile.BadZipFile as e:
+            # Some big zips (ZIP64, written by some tools) are fine but
+            # beyond Python's reader: unzip them and run this again.
+            print(f"  {z.name}: can't read it here ({e}).")
+            print(f"    Unzip it, then run this again:  ditto -x -k {z} {z.with_suffix('')}")
+            continue
+        with zf:
             names = set(zf.namelist())
             for name in sorted(n for n in names if n.endswith(".json")):
                 base = name[: -len(".json")]
