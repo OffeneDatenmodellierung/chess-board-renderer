@@ -13,9 +13,13 @@ into the model card.
 | [Annotated Image Dataset for Fenit](https://data.mendeley.com/datasets/wpp9xnbcp6) (Binus University) | Real photos | Piece boxes and the board's 4 corners (CVAT) | CC BY 4.0 | `photos` (unlabelled) for now. An importer that turns boxes and corners into FEN is next, once we've seen the files |
 | [Chess Pieces](https://universe.roboflow.com/joseph-nelson/chess-pieces-new) (Roboflow, joseph-nelson) | About 290 real photos, one fixed angle | Piece boxes only | CC0 | `photos` (unlabelled): for a teacher to read |
 
+ChessReD (10,800 phone photos) is published as CC BY-NC-SA, but its author
+has given open-chess permission for commercial use, provided the dataset
+and the paper are credited. See open-chess's `docs/dataset-permissions.md`;
+the trainer reads it as published (format `chessred`).
+
 Left out: Kaggle's "Chess Positions" (2D diagrams drawn with Chess.com's
-artwork; the licence is doubtful), and ChessReD (CC BY-NC-SA, so
-internal-only).
+artwork; the licence is doubtful).
 
 ## Getting them
 
