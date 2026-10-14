@@ -1,0 +1,23 @@
+[project]
+name = "chess-board-renderer"
+version = "0.1.0"
+description = "Labelled chess board photos for training a board reader: Blender renders, and importers for openly licensed datasets"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+# bpy (Blender as a Python module) is built for one Python: 3.11 for Blender 4.x and 5.0.
+requires-python = ">=3.11,<3.12"
+dependencies = [
+    "chess>=1.11",
+    "pillow>=11",
+    "zstandard>=0.23",
+]
+
+[project.optional-dependencies]
+# Blender as a Python module, instead of the Blender app.
+blender = ["bpy>=4.2"]
+# The Hugging Face importer (felix).
+hf = ["datasets>=3"]
+
+[tool.uv]
+# Scripts, not an installable package.
+package = false

@@ -20,18 +20,16 @@ internal-only).
 ## Getting them
 
 ```sh
-pip install pillow datasets
-
 # samryan18 (4.4 GB of 6000-pixel photos; the import scales them to 1600)
 git clone --depth 1 https://github.com/samryan18/chess-dataset
-python import_datasets.py samryan18 chess-dataset ~/chess-data/samryan18
+uv run import_datasets.py samryan18 chess-dataset ~/chess-data/samryan18
 
-# chesscog: download from https://osf.io/xf3ka (or `pip install osfclient &&
-# osf -p xf3ka clone chesscog-osf`), unzip, then
-python import_datasets.py chesscog chesscog-osf ~/chess-data/chesscog
+# chesscog: download from https://osf.io/xf3ka (or
+# `uvx --from osfclient osf -p xf3ka clone chesscog-osf`), unzip, then
+uv run import_datasets.py chesscog chesscog-osf ~/chess-data/chesscog
 
-# felix: fetched from Hugging Face
-python import_datasets.py felix - ~/chess-data/felix-boards
+# felix: fetched from Hugging Face (the `hf` extra)
+uv run --extra hf import_datasets.py felix - ~/chess-data/felix-boards
 
 # Fenit and Roboflow: download (Roboflow: any export format), then put the
 # images in a folder; the trainer reads the folder as `photos`.

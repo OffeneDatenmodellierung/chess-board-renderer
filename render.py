@@ -8,9 +8,9 @@ go in, so the images are entirely yours to license.
 
     blender -b -P render.py -- --positions positions.txt --out renders --count 1000
 
-or, with Blender as a Python module (``pip install bpy``, Python 3.11):
+or, with Blender as a Python module (Python 3.11):
 
-    python render.py --positions positions.txt --out renders --count 1000
+    uv run --extra blender render.py --positions positions.txt --out renders --count 1000
 
 Writes ``renders/photos/000000.jpg`` … and ``renders/labels.jsonl``, one line
 per photo: ``{"image": "photos/000000.jpg", "placement": "<FEN placement>",

@@ -6,13 +6,13 @@
 Each source keeps its own licence: see DATASETS.md for where to download
 them, their licences, and the attribution lines the model card must carry.
 
-    python import_datasets.py samryan18 path/to/chess-dataset   ~/chess-data/samryan18
-    python import_datasets.py chesscog  path/to/osf-render-dir   ~/chess-data/chesscog
-    python import_datasets.py felix     -                       ~/chess-data/felix-boards
+    uv run import_datasets.py samryan18 path/to/chess-dataset   ~/chess-data/samryan18
+    uv run import_datasets.py chesscog  path/to/osf-render-dir   ~/chess-data/chesscog
+    uv run --extra hf import_datasets.py felix -                       ~/chess-data/felix-boards
 
 Photos are scaled down to --max-side (default 1600) and turned upright from
 their EXIF orientation: the trainer scales to 392–644 anyway, and 6000-pixel
-originals only slow it down. Needs Pillow (and ``datasets`` for felix).
+originals only slow it down.
 """
 
 from __future__ import annotations
@@ -147,7 +147,7 @@ def felix(src: str, w: Writer):
     try:
         from datasets import load_dataset
     except ImportError:
-        sys.exit("felix needs Hugging Face's datasets: pip install datasets")
+        sys.exit("felix needs Hugging Face's datasets: uv run --extra hf import_datasets.py felix …")
     name = src if src not in ("-", "") else "felixfabricius/robot-chess-commentator-squares"
     ds = load_dataset(name, "boards")
     for split, rows in ds.items():

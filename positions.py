@@ -10,10 +10,10 @@ Two sources, mixable:
   database (https://database.lichess.org, released as CC0). ``.pgn`` or
   ``.pgn.zst`` (needs ``zstandard``).
 
-    python positions.py --random 3000 --pgn lichess_db_standard_rated_2013-01.pgn.zst \
+    uv run positions.py --random 3000 --pgn lichess_db_standard_rated_2013-01.pgn.zst \
         --from-pgn 7000 --out positions.txt
 
-Needs ``python-chess`` (``pip install chess``).
+Run with uv (``uv run positions.py …``), which installs python-chess.
 """
 
 from __future__ import annotations
@@ -51,7 +51,7 @@ def open_pgn(path: str) -> io.TextIOBase:
         try:
             import zstandard
         except ImportError:
-            sys.exit("reading .zst needs zstandard: pip install zstandard")
+            sys.exit("reading .zst needs zstandard: run with uv run positions.py …")
         raw = open(path, "rb")
         return io.TextIOWrapper(zstandard.ZstdDecompressor().stream_reader(raw), encoding="utf-8", errors="replace")
     return open(path, encoding="utf-8", errors="replace")

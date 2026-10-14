@@ -24,22 +24,27 @@ license**, and a model trained on them can ship.
 
 ## Use
 
-You need [Blender](https://www.blender.org/download/). It was tested with 5.0.
-You also need Python with `python-chess` for the positions.
+You need [uv](https://docs.astral.sh/uv/), which brings the right Python
+(3.11) and the dependencies (`pyproject.toml`, `uv.lock`). You also need
+[Blender](https://www.blender.org/download/), tested with 5.0, or use it as a
+Python module (below).
 
 ```sh
-pip install chess            # and zstandard, to read .pgn.zst
 # 1. Positions: random games, and/or real ones from https://database.lichess.org
-python positions.py --random 3000 --out positions.txt
-python positions.py --random 1000 --pgn lichess_db_standard_rated_2013-01.pgn.zst \
+uv run positions.py --random 3000 --out positions.txt
+uv run positions.py --random 1000 --pgn lichess_db_standard_rated_2013-01.pgn.zst \
     --from-pgn 4000 --out positions.txt
 
 # 2. Photos (on a Mac, Blender renders on the GPU with Metal)
 blender -b -P render.py -- --positions positions.txt --out ~/chess-data/synthetic --count 10000
 ```
 
-Instead of the Blender app, you can use Blender as a Python module:
-`pip install bpy` (Python 3.11), then `python render.py --positions … --out …`.
+Or, without the Blender app, Blender as a Python module (the `blender`
+extra, about 400 MB):
+
+```sh
+uv run --extra blender render.py --positions positions.txt --out ~/chess-data/synthetic --count 10000
+```
 
 The output is `photos/000000.jpg …` plus `labels.jsonl`, in the trainer's
 `jsonl` format:
