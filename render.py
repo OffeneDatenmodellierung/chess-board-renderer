@@ -599,7 +599,13 @@ def main(argv):
             labels.write(json.dumps({"image": name, "placement": placement, "group": f"pos-{pos_index:06d}"}) + "\n")
             labels.flush()
             done = n + 1 - start
-            rate = (time.time() - t0) / done
+            if done == 1:
+                # The first photo also compiles the GPU's shaders: leave it
+                # out of the estimate.
+                t1 = time.time()
+                print(f"photo {n + 1}/{a.count} (the first one is slow: setting up)")
+                continue
+            rate = (time.time() - t1) / (done - 1)
             print(f"photo {n + 1}/{a.count} ({rate:.1f}s each, about {rate * (a.count - n - 1) / 60:.0f} min left)")
 
 
