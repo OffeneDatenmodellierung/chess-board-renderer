@@ -127,8 +127,11 @@ def split_from(parts) -> str | None:
     """The split named by a folder or zip in a path, if any."""
     for part in reversed(list(parts)):
         stem = Path(part).stem.lower()
-        if stem in SPLITS:
-            return SPLITS[stem]
+        # "train", or a joined copy such as "train-whole".
+        word = re.split(r"[-_. ]", stem)[0]
+        for name in (stem, word):
+            if name in SPLITS:
+                return SPLITS[name]
     return None
 
 
@@ -150,6 +153,7 @@ def chesscog(src: Path, w: Writer):
         w.add(f"cc-{key}", image, fen.split()[0], group=f"chesscog:{key}", split=split)
 
     zips = [src] if src.suffix == ".zip" else sorted(src.rglob("*.zip"))
+    zips = [z for z in zips if not z.with_name(f"{z.stem}-whole.zip").exists()]
     for z in zips:
         before = found
         try:
@@ -158,7 +162,13 @@ def chesscog(src: Path, w: Writer):
             # Some big zips (ZIP64, written by some tools) are fine but
             # beyond Python's reader: unzip them and run this again.
             print(f"  {z.name}: can't read it here ({e}).")
-            print(f"    Unzip it, then run this again:  ditto -x -k {z} {z.with_suffix('')}")
+            whole = z.with_name(f"{z.stem}-whole.zip")
+            if "multiple disks" in str(e):
+                # A split zip (train.z01, train.z02 …, train.zip): join it.
+                print(f"    It's one part of a split zip. Join the parts, then run this again:")
+                print(f"      zip -s 0 {z} --out {whole}")
+            else:
+                print(f"    Unzip it, then run this again:  ditto -x -k {z} {z.with_suffix('')}")
             continue
         with zf:
             names = set(zf.namelist())

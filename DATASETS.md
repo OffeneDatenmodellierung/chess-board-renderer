@@ -25,7 +25,10 @@ git clone --depth 1 https://github.com/samryan18/chess-dataset
 uv run import_datasets.py samryan18 chess-dataset ~/chess-data/samryan18
 
 # chesscog: download from https://osf.io/xf3ka (or
-# `uvx --from osfclient osf -p xf3ka clone chesscog-osf`), unzip, then
+# `uvx --from osfclient osf -p xf3ka clone chesscog-osf`). train.zip is a
+# split zip: join its parts first (the import says so if you forget).
+uvx --from osfclient osf -p xf3ka clone chesscog-osf
+zip -s 0 chesscog-osf/osfstorage/train.zip --out chesscog-osf/osfstorage/train-whole.zip
 uv run import_datasets.py chesscog chesscog-osf ~/chess-data/chesscog
 
 # felix: fetched from Hugging Face (the `hf` extra)
